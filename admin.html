@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin WhatsApp</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:0;padding:24px;background:#0b0b0b;color:#fff}
+    .wrap{max-width:640px;margin:auto}
+    .card{background:#151515;border:1px solid #2a2a2a;border-radius:14px;padding:20px}
+    label{display:block;margin-top:14px}
+    input,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid #333;background:#0f0f0f;color:#fff}
+    button{margin-top:16px;padding:12px 16px;border:0;border-radius:10px;background:#21a366;color:#fff;font-weight:800;cursor:pointer}
+    .row{display:grid;gap:10px}
+    .ok{color:#2dd4bf;margin-top:10px}
+    .err{color:#fb7185;margin-top:10px}
+    small{opacity:.7}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Configurar WhatsApp</h1>
+    <div class="card">
+      <div class="row">
+        <label>Token de administración
+          <input type="password" id="token" placeholder="ADMIN_TOKEN">
+        </label>
+        <label>Número (formato internacional, sin +)
+          <input type="text" id="number" placeholder="Ej: 543821450244" maxlength="16">
+        </label>
+        <label>Mensaje inicial
+          <textarea id="message" rows="3" placeholder="¡Buen4s! Me gust4rí4 cre4r un usu4rio. Mi nombre es:"></textarea>
+        </label>
+        <button id="save">Guardar cambios</button>
+        <div id="status"></div>
+        <small>Después de guardar, recargá la landing para ver el cambio.</small>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function loadCurrent(){
+      try{
+        const r = await fetch('/api/config', { cache: 'no-store' });
+        if (r.ok){
+          const { number, message } = await r.json();
+          document.getElementById('number').value = number || '';
+          document.getElementById('message').value = message || '';
+        }
+      }catch(_){}
+    }
+    loadCurrent();
+
+    document.getElementById('save').addEventListener('click', async ()=>{
+      const token = document.getElementById('token').value.trim();
+      const number = document.getElementById('number').value.trim();
+      const message = document.getElementById('message').value.trim();
+      const status = document.getElementById('status'); status.textContent = '';
+
+      if(!token){ status.innerHTML = '<div class="err">Falta el token.</div>'; return; }
+      if(!/^\d{8,16}$/.test(number)){ status.innerHTML = '<div class="err">Número inválido.</div>'; return; }
+      if(message.length < 4){ status.innerHTML = '<div class="err">Mensaje inválido.</div>'; return; }
+
+      try{
+        const r = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+          body: JSON.stringify({ number, message })
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data.error || 'Error');
+        status.innerHTML = '<div class="ok">✅ ¡Guardado! Actualizá la landing para ver el cambio.</div>';
+      }catch(e){
+        status.innerHTML = '<div class="err">❌ ' + e.message + '</div>';
+      }
+    });
+  </script>
+</body>
+</html>
