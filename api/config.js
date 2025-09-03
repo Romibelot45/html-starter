@@ -1,24 +1,14 @@
-// /api/config.js
+// /api/config.js  (sin pipeline; usa 2 HSET directos)
 module.exports = async (req, res) => {
-  // CORS básico
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
   if (req.method === "OPTIONS") return res.status(200).end();
 
-  // Soporta nombres distintos (Upstash/KV)
-  const BASE =
-    process.env.UPSTASH_REDIS_REST_URL ||
-    process.env.KV_REST_API_URL;
-  const TOKEN =
-    process.env.UPSTASH_REDIS_REST_TOKEN ||
-    process.env.KV_REST_API_TOKEN;
+  const BASE = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
+  const TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  if (!BASE || !TOKEN) return res.status(500).json({ error: "Faltan env vars de Upstash." });
 
-  if (!BASE || !TOKEN) {
-    return res.status(500).json({ error: "Faltan variables de Upstash (REST_URL/REST_TOKEN)." });
-  }
-
-  // Helper para llamar a Upstash REST
   const doFetch = (path, init = {}) =>
     fetch(`${BASE}${path}`, {
       ...init,
@@ -34,7 +24,6 @@ module.exports = async (req, res) => {
     const j = await r.json();
     let number, message;
     const out = j.result;
-
     if (Array.isArray(out)) {
       for (let i = 0; i < out.length; i += 2) {
         if (out[i] === "number") number = out[i + 1];
@@ -43,7 +32,6 @@ module.exports = async (req, res) => {
     } else if (out && typeof out === "object") {
       number = out.number; message = out.message;
     }
-
     return res.status(200).json({
       number: number || "543821450244",
       message: message || "¡Buen4s! Me gust4rí4 cre4r un usu4rio. Mi nombre es:",
@@ -56,27 +44,21 @@ module.exports = async (req, res) => {
       return res.status(401).json({ error: "Unauthorized" });
 
     try {
-      let body = req.body;
-      if (typeof body === "string") body = JSON.parse(body);
+      let body = req.body; if (typeof body === "string") body = JSON.parse(body);
       const { number, message } = body || {};
-
       if (!number || !/^\d{8,16}$/.test(number))
-        return res.status(400).json({ error: "Número inválido. Formato internacional sin +." });
-      if (!message || typeof message !== "string" || message.length < 4)
+        return res.status(400).json({ error: "Número inválido (formato internacional sin +)." });
+      if (!message || message.length < 4)
         return res.status(400).json({ error: "Mensaje inválido." });
 
-      // Guardar ambos campos en una pipeline
-      const r = await doFetch(`/pipeline`, {
-        method: "POST",
-        body: JSON.stringify({
-          commands: [
-            ["HSET", "app:whatsapp", "number", number],
-            ["HSET", "app:whatsapp", "message", message],
-          ],
-        }),
-      });
+      // 1) HSET number
+      let r1 = await doFetch(`/hset/app:whatsapp/number/${encodeURIComponent(number)}`, { method: "POST" });
+      if (!r1.ok) return res.status(500).json({ error: "Upstash error (number)", detail: await r1.text() });
 
-      if (!r.ok) return res.status(500).json({ error: "Upstash error", detail: await r.text() });
+      // 2) HSET message
+      let r2 = await doFetch(`/hset/app:whatsapp/message/${encodeURIComponent(message)}`, { method: "POST" });
+      if (!r2.ok) return res.status(500).json({ error: "Upstash error (message)", detail: await r2.text() });
+
       return res.status(200).json({ ok: true });
     } catch (e) {
       return res.status(500).json({ error: "Server error", detail: String(e) });
